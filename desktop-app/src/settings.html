@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>机器人参数 · DSBot</title>
+  <style>
+    :root{font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;color:#17333d;background:#f4f8fa;font-synthesis:none;--accent:#079cc4;--border:#dce8ec;--muted:#6d8088;--surface:#fff}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(70% 35% at 90% 0%,#e3f7fb 0%,transparent 68%),#f4f8fa}
+    .page{max-width:1060px;margin:0 auto;padding:30px 28px 40px}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:24px}.brand{color:var(--accent);font-size:11px;font-weight:750;letter-spacing:.16em}.title{margin:9px 0 5px;font-size:26px;letter-spacing:-.04em}.intro{margin:0;color:var(--muted);font-size:13px;line-height:1.6}.state{padding:8px 11px;border:1px solid var(--border);border-radius:999px;background:#ffffffb8;color:#5b727a;font-size:11px;white-space:nowrap}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}.card{border:1px solid var(--border);border-radius:17px;background:var(--surface);box-shadow:0 8px 28px #18333d08;overflow:hidden}.card-head{padding:17px 19px 13px;border-bottom:1px solid #edf2f4}.card-head h2{margin:0;font-size:15px;letter-spacing:-.02em}.card-head p{margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.55}.fields{padding:4px 19px 14px}.field{display:grid;grid-template-columns:minmax(140px,1fr) 190px;align-items:center;gap:14px;min-height:58px;border-bottom:1px solid #edf2f4}.field:last-child{border-bottom:0}.field label,.field .label{font-size:12px;font-weight:600}.hint{display:block;margin-top:3px;color:#8a9ba1;font-size:10px;font-weight:400;line-height:1.45}.control{width:100%;height:34px;border:1px solid #cfdee3;border-radius:8px;background:#fff;color:#17333d;padding:0 9px;font:12px inherit;outline:none}.control:focus{border-color:var(--accent);box-shadow:0 0 0 3px #079cc41a}.control[type=number]{font-variant-numeric:tabular-nums}.toggle{justify-self:end;display:flex;align-items:center;gap:8px;color:#688087;font-size:11px;cursor:pointer}.toggle input{width:16px;height:16px;accent-color:var(--accent)}.slider{display:grid;grid-template-columns:1fr 45px;align-items:center;gap:8px}.slider input{width:100%;accent-color:var(--accent)}.slider output{color:#46616b;font:11px ui-monospace,Consolas,monospace;text-align:right}
+    .locked{display:flex;gap:10px;align-items:flex-start;margin-top:16px;padding:12px 14px;border:1px solid #cce7ed;border-radius:12px;background:#eefafd;color:#42636d;font-size:11px;line-height:1.6}.locked b{color:#087e9d}.footer{position:sticky;bottom:0;display:flex;justify-content:space-between;align-items:center;gap:16px;margin:18px -28px -40px;padding:13px 28px;background:#f4f8faed;border-top:1px solid #e1eaed;backdrop-filter:blur(10px)}.result{color:var(--muted);font-size:11px}.actions{display:flex;gap:9px}.button{border:1px solid #cedde2;border-radius:9px;background:white;color:#405b64;padding:10px 14px;font:600 12px inherit;cursor:pointer}.button.primary{border-color:var(--accent);background:var(--accent);color:white}.button:disabled{opacity:.55;cursor:wait}
+    @media(max-width:780px){.page{padding:23px 17px 35px}.grid{grid-template-columns:1fr}.footer{margin-left:-17px;margin-right:-17px;padding:12px 17px}.field{grid-template-columns:minmax(120px,1fr) minmax(145px,180px)}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="top">
+      <div><div class="brand">DSBOT · ROBOT SETTINGS</div><h1 class="title">机器人参数</h1><p class="intro">只调整机器人运行参数；保存后会重启 QQ Bridge 应用新设置。</p></div>
+      <span class="state">本机配置 · 不上传</span>
+    </header>
+    <div class="grid">
+      <section class="card">
+        <header class="card-head"><h2>模型与回复检查</h2><p>模型档位会影响回复深度与生成耗时。</p></header>
+        <div class="fields">
+          <div class="field"><label for="model">模型名称<span class="hint">例如 deepseek-flash</span></label><input class="control" id="model" maxlength="80" autocomplete="off"></div>
+          <div class="field"><label for="reasoningEffort">推理档位<span class="hint">medium 通常兼顾速度和完整度</span></label><select class="control" id="reasoningEffort"><option value="low">low · 更快</option><option value="medium">medium · 均衡</option><option value="high">high · 更深入</option><option value="xhigh">xhigh · 更深入</option><option value="max">max · 最深入</option></select></div>
+          <div class="field"><div><span class="label">二代回复模式</span><span class="hint">关闭后将停止二代自动回复</span></div><label class="toggle"><input id="socialEnabled" type="checkbox">启用</label></div>
+          <div class="field"><label for="autoReplyCheckMs">检查新消息间隔<span class="hint">越短响应越快，后台检查也越频繁</span></label><input class="control" id="autoReplyCheckMs" type="number" min="1000" max="600000" step="1000"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <header class="card-head"><h2>唤醒与潜水</h2><p>控制普通消息唤醒机会和频率上限。</p></header>
+        <div class="fields">
+          <div class="field"><label for="wakeDefaultMode">默认状态<span class="hint">潜水时仅按唤醒条件参与</span></label><select class="control" id="wakeDefaultMode"><option value="diving">潜水</option><option value="active">活跃</option></select></div>
+          <div class="field"><label for="wakeProbability">普通消息唤醒概率</label><div class="slider"><input id="wakeProbability" type="range" min="0" max="1" step="0.05"><output id="wakeProbabilityValue"></output></div></div>
+          <div class="field"><label for="preSleepWaitMs">睡前观察时间<span class="hint">进入潜水前等待群聊安静一段时间</span></label><input class="control" id="preSleepWaitMs" type="number" min="10000" max="1800000" step="10000"></div>
+          <div class="field"><div><span class="label">启用睡前观察</span></div><label class="toggle"><input id="preSleepWaitEnabled" type="checkbox">启用</label></div>
+          <div class="field"><label for="maxWakePerMinute">每分钟唤醒上限</label><input class="control" id="maxWakePerMinute" type="number" min="0" max="60" step="1"></div>
+          <div class="field"><label for="maxWakePerHour">每小时唤醒上限</label><input class="control" id="maxWakePerHour" type="number" min="0" max="1000" step="1"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <header class="card-head"><h2>发言节奏</h2><p>设置分条节奏和发送限制，避免回复太慢或连续刷屏。</p></header>
+        <div class="fields">
+          <div class="field"><div><span class="label">分条发送</span><span class="hint">长回复按完整短句分条发送</span></div><label class="toggle"><input id="burstEnabled" type="checkbox">启用</label></div>
+          <div class="field"><label for="burstIntervalMinMs">分条最短间隔<span class="hint">毫秒</span></label><input class="control" id="burstIntervalMinMs" type="number" min="0" max="60000" step="100"></div>
+          <div class="field"><label for="burstIntervalMaxMs">分条最长间隔<span class="hint">毫秒</span></label><input class="control" id="burstIntervalMaxMs" type="number" min="0" max="120000" step="100"></div>
+          <div class="field"><label for="maxSendPerMinute">每分钟发送上限</label><input class="control" id="maxSendPerMinute" type="number" min="1" max="120" step="1"></div>
+          <div class="field"><label for="maxMessageChars">单条消息字数上限</label><input class="control" id="maxMessageChars" type="number" min="50" max="4000" step="50"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <header class="card-head"><h2>主动发言与上下文</h2><p>主动发言遵守静默时段；上下文越长，单次推理耗时也可能越高。</p></header>
+        <div class="fields">
+          <div class="field"><div><span class="label">允许主动发言</span></div><label class="toggle"><input id="proactiveEnabled" type="checkbox">启用</label></div>
+          <div class="field"><label for="proactiveProbability">主动发言概率</label><div class="slider"><input id="proactiveProbability" type="range" min="0" max="1" step="0.05"><output id="proactiveProbabilityValue"></output></div></div>
+          <div class="field"><label for="proactiveIdleThresholdMs">群聊安静多久后检查<span class="hint">毫秒</span></label><input class="control" id="proactiveIdleThresholdMs" type="number" min="60000" max="86400000" step="60000"></div>
+          <div class="field"><label for="recentLimit">最近消息读取数量</label><input class="control" id="recentLimit" type="number" min="10" max="500" step="10"></div>
+          <div class="field"><label for="unreadLimit">待处理消息保留数量</label><input class="control" id="unreadLimit" type="number" min="1" max="500" step="1"></div>
+          <div class="field"><label for="contextWindow">模型上下文条数</label><input class="control" id="contextWindow" type="number" min="4" max="100" step="1"></div>
+        </div>
+      </section>
+    </div>
+    <aside class="locked"><span>●</span><span><b>@ 和直接问题仍优先认真回应。</b>这项行为由现有角色规则与桥接逻辑保证，参数页不提供关闭开关。</span></aside>
+    <footer class="footer"><span class="result" id="result">正在读取当前配置…</span><div class="actions"><button class="button" id="restart" type="button">只重启 QQ Bridge</button><button class="button primary" id="save" type="button">保存并应用</button></div></footer>
+  </main>
+  <script src="settings.js"></script>
+</body>
+</html>

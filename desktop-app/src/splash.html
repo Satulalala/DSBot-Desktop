@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DSBot 桌面端</title>
+  <style>
+    :root{font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;color:#18333d;background:#f4f8fa;font-synthesis:none}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(80% 60% at 50% 0%,#dff5fa 0%,transparent 70%),#f4f8fa}
+    main{width:min(780px,calc(100vw - 40px));padding:42px;border:1px solid #dce8ec;border-radius:24px;background:#fff;box-shadow:0 20px 70px #18333d12}
+    .brand{display:flex;align-items:center;gap:13px}.mark{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:#e7f8fc;color:#0789aa;font-weight:800;letter-spacing:-.05em}.eyebrow{font-size:11px;letter-spacing:.18em;color:#0789aa;font-weight:700}.headline{margin:25px 0 6px;font-size:28px;letter-spacing:-.04em}.description{margin:0;color:#6b7e85;font-size:14px;line-height:1.7}
+    .services{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:28px}.service{min-height:126px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;padding:14px;border:1px solid #e1ebee;border-radius:14px;background:#fcfefe}.service-name{font-size:13px;font-weight:650}.service-detail{min-height:32px;margin-top:7px;color:#687d84;font-size:11px;line-height:1.5;overflow-wrap:anywhere}.dot{display:inline-block;width:7px;height:7px;margin-right:7px;border-radius:50%;background:#9eafb5}.dot.online{background:#16a276}.dot.error{background:#cf654f}.dot.starting,.dot.checking{background:#d39b3e;box-shadow:0 0 0 3px #d39b3e24}
+    .bottom{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:25px}.message{color:#536d75;font-size:12px}.actions{display:flex;gap:8px;flex-wrap:wrap}.action,.retry,.service-start{border-radius:10px;padding:10px 15px;font-weight:650;cursor:pointer}.action{border:1px solid #d9e6ea;background:#fff;color:#36545e}.retry,.service-start{border:0;background:#079cc4;color:white}.retry{display:none}.retry.visible{display:block}.service-start{align-self:flex-start;padding:7px 11px;font-size:11px}.service-start[hidden]{display:none}.action:focus-visible,.retry:focus-visible,.service-start:focus-visible{outline:3px solid #53b8d4;outline-offset:2px}.action:disabled,.retry:disabled,.service-start:disabled{cursor:wait;opacity:.65}.note{margin-top:20px;color:#82949a;font-size:11px}
+    @media(max-width:660px){main{padding:25px}.services{grid-template-columns:1fr}.service-detail{min-height:unset}.bottom{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand"><span class="mark">DS</span><span><strong>DSBot 桌面端</strong><div class="eyebrow">LOCAL SERVICE DESK</div></span></div>
+    <h1 class="headline">本机服务状态</h1>
+    <p class="description">控制台会持续检查服务是否响应。服务未启动时，可在对应卡片中手动启动。</p>
+    <section class="services" id="services" aria-label="本机服务" aria-live="polite"></section>
+    <div class="bottom"><span class="message" id="message" role="status" aria-live="polite">正在检查服务…</span><div class="actions"><button class="action" id="snowluma-directory" type="button">选择 SnowLuma 文件夹</button><button class="action" id="settings" type="button">机器人参数</button><button class="retry" id="retry" type="button">检查并启动缺失服务</button></div></div>
+    <p class="note">桌面端已包含 DeepSeek Harness、QQ Bridge 和运行环境。请单独下载 SnowLuma 并选择其安装文件夹；账号与白名单配置保存在本机用户目录。</p>
+  </main>
+  <script>
+    const labels = { dsh: 'DeepSeek Harness', snowluma: 'SnowLuma', bridge: 'QQ Bridge' };
+    const services = document.getElementById('services');
+    const message = document.getElementById('message');
+    const retry = document.getElementById('retry');
+    const settings = document.getElementById('settings');
+    const snowlumaDirectory = document.getElementById('snowluma-directory');
+    const cards = new Map();
+    const busyServices = new Set();
+    let latestState = null;
+    let retryBusy = false;
+    function createCard(key, service) {
+      const card = document.createElement('article'); card.className = 'service';
+      const title = document.createElement('div'); title.className = 'service-name';
+      const dot = document.createElement('i'); dot.className = 'dot';
+      title.append(dot, document.createTextNode(labels[key] || service.label || key));
+      const detail = document.createElement('div'); detail.className = 'service-detail';
+      const action = document.createElement('button'); action.className = 'service-start'; action.type = 'button';
+      action.addEventListener('click', async () => {
+        busyServices.add(key);
+        render(latestState);
+        try {
+          const chooseDirectory = key === 'snowluma' && latestState?.services?.snowluma?.actionLabel === '选择目录';
+          const result = chooseDirectory
+            ? await window.dsbotStartup?.selectSnowLumaDirectory()
+            : await window.dsbotStartup?.startService(key);
+          if (result?.detail) message.textContent = result.detail;
+        } catch (error) {
+          message.textContent = error?.message || '启动服务失败，请查看运行日志。';
+        } finally {
+          busyServices.delete(key);
+          render(latestState);
+        }
+      });
+      card.append(title, detail, action);
+      services.append(card);
+      const refs = { card, dot, title, detail, action };
+      cards.set(key, refs);
+      return refs;
+    }
+    function render(state) {
+      if (!state?.services) return;
+      latestState = state;
+      for (const [key, service] of Object.entries(state.services)) {
+        const refs = cards.get(key) || createCard(key, service);
+        refs.dot.className = `dot ${service.status || ''}`;
+        refs.title.lastChild.textContent = labels[key] || service.label || key;
+        refs.detail.textContent = service.detail || service.status || '';
+        refs.action.textContent = busyServices.has(key) ? '处理中…' : (service.actionLabel || '启动');
+        refs.action.setAttribute('aria-label', `${labels[key] || service.label || key}：${refs.action.textContent}`);
+        refs.action.hidden = service.status !== 'error';
+        refs.action.disabled = busyServices.has(key);
+      }
+      message.textContent = state.message || '正在检查服务…';
+      snowlumaDirectory.textContent = state.snowlumaRoot ? '更换 SnowLuma 文件夹' : '选择 SnowLuma 文件夹';
+      retry.classList.toggle('visible', Object.values(state.services).some(item => item.status === 'error' || item.status === 'starting'));
+      retry.disabled = retryBusy;
+    }
+    window.dsbotStartup?.onUpdate(render);
+    settings.addEventListener('click', () => window.dsbotStartup?.openSettings());
+    snowlumaDirectory.addEventListener('click', async () => {
+      snowlumaDirectory.disabled = true;
+      try {
+        const result = await window.dsbotStartup?.selectSnowLumaDirectory();
+        if (result?.canceled) message.textContent = '已取消选择 SnowLuma 文件夹。';
+        else if (result?.ok) message.textContent = '已保存 SnowLuma 路径，正在启动服务…';
+      } catch (error) {
+        message.textContent = error?.message || '选择 SnowLuma 文件夹失败。';
+      } finally {
+        snowlumaDirectory.disabled = false;
+      }
+    });
+    retry.addEventListener('click', async () => {
+      retryBusy = true;
+      render(latestState);
+      message.textContent = '正在检查并启动缺失服务…';
+      try { await window.dsbotStartup?.retry(); }
+      catch (error) { message.textContent = error?.message || '检查服务失败，请查看运行日志。'; }
+      finally { retryBusy = false; render(latestState); }
+    });
+  </script>
+</body>
+</html>

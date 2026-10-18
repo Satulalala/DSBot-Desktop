@@ -1,0 +1,19 @@
+{
+  "name": "dsbot-desktop",
+  "productName": "DSBot 桌面端",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DSBot Electron desktop launcher and SnowLuma workspace",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron-forge start",
+    "prepare:runtime": "node scripts/prepare-runtime.mjs",
+    "package": "npm run prepare:runtime && electron-forge package",
+    "make": "npm run prepare:runtime && electron-forge make"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-squirrel": "8.0.1",
+    "electron": "44.8.0"
+  }
+}

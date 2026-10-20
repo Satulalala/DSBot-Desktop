@@ -11,7 +11,7 @@
 
 ## 下载和安装
 
-在 [v1.0.6 Release](https://github.com/Satulalala/DSBot-Desktop/releases/tag/v1.0.6) 下载 **DSBot 桌面端-1.0.6 Setup.exe** 并运行。首次启动时选择你单独下载并安装的 SnowLuma 文件夹。
+在 [v1.0.6 Release](https://github.com/Satulalala/DSBot-Desktop/releases/tag/v1.0.6) 下载 Windows 安装程序并运行。首次启动时选择你单独下载并安装的 SnowLuma 文件夹。
 
 安装包内置 Node.js、DSH、QQ Bridge 及其运行依赖。**SnowLuma 服务本体不包含在安装包内**；请从 [SnowLuma 官方项目](https://github.com/SnowLuma/SnowLuma) 单独下载。SnowLuma 的 QQ 登录信息、机器人参数和授权名单保存在本机用户目录，不会预填进公共安装包。
 

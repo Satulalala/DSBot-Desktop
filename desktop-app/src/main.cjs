@@ -13,7 +13,9 @@ if (!hasSingleInstance) app.quit();
 
 let mainWindow = null;
 let settingsWindow = null;
+let roleWindow = null;
 let serviceConsoleWindow = null;
+let activeBridgeDataRoot = null;
 let startupBusy = false;
 let quitting = false;
 let bridgeRestartMonitor = false;
@@ -38,6 +40,7 @@ const RUNTIME_SETUP_FILE = path.join(USER_DATA, 'runtime-setup.json');
 const RUNTIME_BUNDLE_VERSION = app.getVersion();
 const SNOWLUMA_URL = 'http://127.0.0.1:5099';
 const SETTINGS_FILE = path.join(__dirname, 'settings.html');
+const ROLE_WINDOW_FILE = path.join(__dirname, 'roles.html');
 const SPLASH_FILE = path.join(__dirname, 'splash.html');
 const PRELOAD_FILE = path.join(__dirname, 'preload.cjs');
 // External Node cannot read Electron's app.asar. Package this preload as a resource.
@@ -119,8 +122,35 @@ function updateService(name, status, detail, actionLabel) {
   publishServiceState(detail);
 }
 
-function serviceEnvironment(paths) {
-  return {
+function readCredentialRef(dshHome, refName) {
+  if (!/^[A-Z0-9_]+$/.test(refName)) return '';
+  let contents = '';
+  try { contents = fs.readFileSync(path.join(dshHome, '.credentials.yaml'), 'utf8'); } catch { return ''; }
+  if (contents.charCodeAt(0) === 0xFEFF) contents = contents.slice(1);
+  let inRefs = false;
+  for (const line of contents.split(/\r?\n/)) {
+    if (!inRefs) {
+      if (/^refs:\s*(?:#.*)?$/.test(line)) inRefs = true;
+      continue;
+    }
+    if (line && !/^\s/.test(line) && !/^\s*#/.test(line)) break;
+    const match = line.match(new RegExp(`^\\s+${refName}:\\s*(.*?)\\s*$`));
+    if (!match) continue;
+    let value = match[1];
+    if (value.startsWith('"') && value.endsWith('"')) {
+      try { value = JSON.parse(value); } catch { return ''; }
+    } else if (value.startsWith("'") && value.endsWith("'")) {
+      value = value.slice(1, -1).replace(/''/g, "'");
+    } else {
+      value = value.replace(/\s+#.*$/, '').trim();
+    }
+    return typeof value === 'string' && !/[\r\n]/.test(value) ? value : '';
+  }
+  return '';
+}
+
+function serviceEnvironment(paths, serviceName = '') {
+  const env = {
     ...process.env,
     DSBOT_BRIDGE_ROOT: paths.bridgeRoot,
     DSBOT_DATA_DIR: paths.dataRoot,
@@ -133,6 +163,14 @@ function serviceEnvironment(paths) {
       `--import=${pathToFileURL(paths.resolverRegister).href}`
     ].filter(Boolean).join(' ')
   };
+  if (serviceName === 'dsh' && !env.DEEPSEEK_API_KEY) {
+    const apiKey = readCredentialRef(paths.dshHome, 'DEEPSEEK_API_KEY');
+    if (apiKey) {
+      env.DEEPSEEK_API_KEY = apiKey;
+      console.info('[desktop] DSH DeepSeek API credential loaded from the local DSH credential store.');
+    }
+  }
+  return env;
 }
 
 function copyMissingFiles(source, destination) {
@@ -264,6 +302,11 @@ function canAccessSettings(event) {
   return settingsWindow && event.sender === settingsWindow.webContents && frameUrl.startsWith('file:') && frameUrl.endsWith('/settings.html');
 }
 
+function canAccessRoleUi(event) {
+  const frameUrl = event.senderFrame?.url ?? '';
+  return roleWindow && !roleWindow.isDestroyed() && event.sender === roleWindow.webContents && frameUrl.startsWith('file:') && frameUrl.endsWith('/roles.html');
+}
+
 function canAccessStartupUi(event) {
   const frameUrl = event.senderFrame?.url ?? '';
   return [mainWindow, serviceConsoleWindow].some((window) =>
@@ -300,14 +343,85 @@ function serviceLaunchConfig(name, paths = runtimePaths()) {
   return null;
 }
 
+function listeningProcesses(port) {
+  if (process.platform !== 'win32') return null;
+  const safePort = Number(port);
+  if (!Number.isInteger(safePort) || safePort < 1 || safePort > 65535) return null;
+  const script = [
+    '$ErrorActionPreference = "Stop"',
+    `$owners = @(Get-NetTCPConnection -State Listen -LocalPort ${safePort} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)`,
+    '$items = @()',
+    'foreach ($owner in $owners) { $item = Get-CimInstance Win32_Process -Filter ("ProcessId = " + [int]$owner); if ($item) { $items += [pscustomobject]@{ processId = $item.ProcessId; executablePath = $item.ExecutablePath; commandLine = $item.CommandLine } } }',
+    '$json = ConvertTo-Json -InputObject @($items) -Compress',
+    '[Console]::Out.Write([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json)))'
+  ].join('; ');
+  const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], {
+    windowsHide: true,
+    encoding: 'utf8',
+    timeout: 5000,
+    stdio: ['ignore', 'pipe', 'ignore']
+  });
+  if (result.error || result.status !== 0) return null;
+  const output = String(result.stdout || '').trim();
+  if (!output) return [];
+  try {
+    const parsed = JSON.parse(Buffer.from(output, 'base64').toString('utf8'));
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return null;
+  }
+}
+
+function normalizedWindowsPath(value) {
+  if (!value) return '';
+  return path.resolve(String(value)).replace(/[\\/]+$/, '').toLowerCase();
+}
+
+function isExpectedServiceProcess(processInfo, command) {
+  const executablePath = normalizedWindowsPath(processInfo?.executablePath);
+  const commandLine = String(processInfo?.commandLine || '').replace(/\//g, '\\').toLowerCase();
+  const requiredPath = normalizedWindowsPath(command?.requiredPath);
+  return Boolean(executablePath && commandLine && requiredPath
+    && executablePath === normalizedWindowsPath(command.executable)
+    && commandLine.includes(requiredPath));
+}
+
+function isStaleBundledServiceProcess(name, processInfo, command) {
+  if (!['dsh', 'bridge'].includes(name)) return false;
+  const executablePath = normalizedWindowsPath(processInfo?.executablePath);
+  const expectedExecutable = normalizedWindowsPath(command?.executable);
+  const bundledRuntimeRoot = normalizedWindowsPath(path.join(USER_DATA, 'bundled-runtime')) + path.sep;
+  const commandLine = String(processInfo?.commandLine || '').replace(/\//g, '\\').toLowerCase();
+  if (!executablePath || !expectedExecutable || executablePath === expectedExecutable
+      || !executablePath.startsWith(bundledRuntimeRoot)) return false;
+  const entryMarker = name === 'dsh'
+    ? '\\dsh\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js'
+    : '\\qq-bridge\\src\\bridge.js';
+  return commandLine.includes(entryMarker);
+}
+
+function stopProcessTree(processId) {
+  if (process.platform !== 'win32' || !Number.isInteger(Number(processId)) || Number(processId) <= 0) return false;
+  const result = spawnSync('taskkill.exe', ['/PID', String(Number(processId)), '/T', '/F'], {
+    windowsHide: true,
+    stdio: 'ignore',
+    timeout: 10000
+  });
+  return !result.error && result.status === 0;
+}
+
+async function waitForPortClosed(port, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && !quitting) {
+    if (!(await portIsOpen(port))) return true;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  return !quitting && !(await portIsOpen(port));
+}
+
 async function ensureConfiguredService(name, paths = runtimePaths()) {
   const active = serviceStarts.get(name);
   if (active) return active;
-  const current = services[name];
-  if (current && await portIsOpen(current.port)) {
-    updateService(name, 'online', `服务正常响应 · 127.0.0.1:${current.port}`, '启动');
-    return true;
-  }
   const command = serviceLaunchConfig(name, paths);
   if (!command) {
     updateService(name, 'error', '找不到 Node.js；请检查本机运行环境');
@@ -320,6 +434,33 @@ async function ensureConfiguredService(name, paths = runtimePaths()) {
   if (!fs.existsSync(command.requiredPath)) {
     updateService(name, 'error', `找不到服务文件：${command.requiredPath}`);
     return false;
+  }
+  if (await portIsOpen(command.port)) {
+    if (process.platform !== 'win32') {
+      updateService(name, 'online', `服务正常响应 · 127.0.0.1:${command.port}`, '启动');
+      return true;
+    }
+    const listeners = listeningProcesses(command.port);
+    if (!listeners) {
+      updateService(name, 'error', `无法核验端口 ${command.port} 对应的后台进程`);
+      return false;
+    }
+    if (listeners.some((item) => isExpectedServiceProcess(item, command))) {
+      updateService(name, 'online', `服务正常响应 · 127.0.0.1:${command.port}`, '启动');
+      return true;
+    }
+    const staleProcesses = name === 'snowluma' ? [] : listeners.filter((item) => isStaleBundledServiceProcess(name, item, command));
+    if (staleProcesses.length && staleProcesses.length === listeners.length) {
+      console.info(`[desktop] ${name} 检测到旧版桌面运行时，正在停止旧进程并启动当前版本。`);
+      for (const item of staleProcesses) stopProcessTree(item.processId);
+      if (!(await waitForPortClosed(command.port, 10000))) {
+        updateService(name, 'error', `旧版后台仍占用端口 ${command.port}，请重启桌面端`);
+        return false;
+      }
+    } else {
+      updateService(name, 'online', `服务正常响应 · 127.0.0.1:${command.port}`, '启动');
+      return true;
+    }
   }
   const task = ensureService(name, command.port, command.executable, command.args, command.cwd, command.timeoutMs);
   serviceStarts.set(name, task);
@@ -382,7 +523,7 @@ function logFileFor(service, stream) {
 
 function spawnBackground(name, executable, args, cwd) {
   if (!fs.existsSync(SERVICE_PRELOAD_FILE)) throw new Error('缺少后台服务窗口控制模块，请重新安装桌面端');
-  const serviceEnv = serviceEnvironment(runtimePaths());
+  const serviceEnv = serviceEnvironment(runtimePaths(), name);
   const outFd = fs.openSync(logFileFor(name, 'out'), 'a');
   const errFd = fs.openSync(logFileFor(name, 'err'), 'a');
   let child;
@@ -415,8 +556,8 @@ function spawnBackground(name, executable, args, cwd) {
 async function ensureService(name, port, executable, args, cwd, timeoutMs) {
   updateService(name, 'checking', `检查 127.0.0.1:${port}`);
   if (await portIsOpen(port)) {
-    updateService(name, 'online', '已在运行，本次不重复启动');
-    return true;
+    updateService(name, 'error', `端口 ${port} 在启动前被其他进程占用`);
+    return false;
   }
   if (!executable || !fs.existsSync(executable)) {
     updateService(name, 'error', `找不到服务文件：${executable || 'Node.js'}`);
@@ -450,7 +591,7 @@ async function ensureService(name, port, executable, args, cwd, timeoutMs) {
 async function startManagedServiceInternal(name) {
   const paths = runtimePaths();
   if (name === 'bridge') {
-    if (!(await portIsOpen(3080)) && !(await ensureConfiguredService('dsh', paths))) {
+    if (!(await ensureConfiguredService('dsh', paths))) {
       updateService('bridge', 'error', 'DeepSeek Harness 未就绪；请先启动 DSH', '启动');
       return false;
     }
@@ -622,6 +763,33 @@ function createSettingsWindow() {
   return settingsWindow;
 }
 
+function createRoleWindow() {
+  if (roleWindow && !roleWindow.isDestroyed()) {
+    roleWindow.show();
+    roleWindow.focus();
+    return roleWindow;
+  }
+  roleWindow = new BrowserWindow({
+    width: 1120,
+    height: 820,
+    minWidth: 820,
+    minHeight: 620,
+    parent: mainWindow ?? undefined,
+    title: '角色卡切换 · DSBot',
+    backgroundColor: '#f4f8fa',
+    webPreferences: {
+      preload: PRELOAD_FILE,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true
+    }
+  });
+  roleWindow.loadFile(ROLE_WINDOW_FILE);
+  roleWindow.on('closed', () => { roleWindow = null; });
+  return roleWindow;
+}
+
 function createServiceConsoleWindow() {
   if (serviceConsoleWindow && !serviceConsoleWindow.isDestroyed()) {
     serviceConsoleWindow.show();
@@ -659,6 +827,7 @@ function createMenu() {
     {
       label: 'DSBot',
       submenu: [
+        { label: '角色卡切换…', click: () => createRoleWindow() },
         { label: '机器人参数…', accelerator: 'Ctrl+,', click: () => createSettingsWindow() },
         { type: 'separator' },
         { label: '退出（后台服务继续运行）', role: 'quit' }
@@ -890,6 +1059,107 @@ async function restartBridge() {
   return { ok: true, message: '配置已保存，QQ Bridge 正在重启。' };
 }
 
+async function bridgeApiRequest(route, method = 'GET', body) {
+  const paths = runtimePaths();
+  const tokenFiles = [...new Set([
+    paths.bridgeToken,
+    path.join(paths.bridgeRoot, 'state', 'console-token')
+  ])];
+  const tokens = tokenFiles.flatMap((file, index) => {
+    try {
+      const token = fs.readFileSync(file, 'utf8').trim();
+      return token ? [{ token, dataRoot: index === 0 ? paths.dataRoot : paths.bridgeRoot }] : [];
+    } catch { return []; }
+  });
+  if (!tokens.length) throw new Error('找不到 Bridge 管理令牌；请先启动 QQ Bridge');
+
+  let response;
+  for (let index = 0; index < tokens.length; index += 1) {
+    response = await fetch(`http://127.0.0.1:3100${route}`, {
+      method,
+      headers: {
+        'x-console-token': tokens[index].token,
+        ...(body === undefined ? {} : { 'content-type': 'application/json' })
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
+    if (response.status !== 401 || index === tokens.length - 1) {
+      activeBridgeDataRoot = tokens[index].dataRoot;
+      break;
+    }
+  }
+  let result;
+  try { result = await response.json(); }
+  catch { throw new Error(`QQ Bridge 返回了无法解析的数据（HTTP ${response.status}）`); }
+  if (!response.ok) throw new Error(result.error || `QQ Bridge 请求失败（HTTP ${response.status}）`);
+  return result;
+}
+
+async function loadRoleManagerData() {
+  const [roleData, sessionData] = await Promise.all([
+    bridgeApiRequest('/api/roles'),
+    bridgeApiRequest('/api/sessions')
+  ]);
+  const paths = runtimePaths();
+  const roleRoots = [...new Set([
+    activeBridgeDataRoot && path.join(activeBridgeDataRoot, 'roles'),
+    paths.roleRoot,
+    paths.defaultRoleRoot
+  ].filter(Boolean).map((root) => path.resolve(root)))];
+  const roles = (Array.isArray(roleData.roles) ? roleData.roles : []).map((name) => {
+    for (const roleRoot of roleRoots) {
+      const roleFile = path.resolve(roleRoot, `${name}.md`);
+      if (path.dirname(roleFile) !== roleRoot) continue;
+      try { return { name, content: fs.readFileSync(roleFile, 'utf8') }; }
+      catch {}
+    }
+    return { name, content: '' };
+  });
+  return {
+    roles,
+    sessions: Array.isArray(sessionData.sessions) ? sessionData.sessions : []
+  };
+}
+
+async function saveRoleCard(input) {
+  const name = typeof input?.name === 'string' ? input.name.trim() : '';
+  const content = typeof input?.content === 'string' ? input.content : '';
+  const expectedContent = typeof input?.expectedContent === 'string' ? input.expectedContent : null;
+  if (!/^[\w\u4e00-\u9fff-]+$/u.test(name) || name === 'README') {
+    throw new Error('角色卡名称无效');
+  }
+  if (expectedContent === null) throw new Error('缺少原始内容校验，请重新打开角色卡');
+  if (!content.trim()) throw new Error('角色卡内容不能为空');
+  if (content.length > 200_000) throw new Error('角色卡内容不能超过 200,000 个字符');
+
+  const { roles } = await bridgeApiRequest('/api/roles');
+  if (!Array.isArray(roles) || !roles.includes(name)) throw new Error('该角色卡已不存在，请刷新列表');
+
+  const paths = runtimePaths();
+  const roleRoot = path.resolve(activeBridgeDataRoot || paths.dataRoot, 'roles');
+  const roleFile = path.resolve(roleRoot, `${name}.md`);
+  if (path.dirname(roleFile) !== roleRoot) throw new Error('角色卡路径无效');
+  if (!fs.existsSync(roleFile)) throw new Error('角色卡文件不存在，请刷新列表');
+  if (fs.readFileSync(roleFile, 'utf8') !== expectedContent) {
+    throw new Error('角色卡已在其他位置修改，请刷新列表后重试');
+  }
+
+  atomicWrite(roleFile, `${content}${content.endsWith('\n') ? '' : '\n'}`);
+  return { name, content: fs.readFileSync(roleFile, 'utf8') };
+}
+
+async function switchSessionRole(input) {
+  const key = typeof input?.key === 'string' ? input.key : '';
+  if (!/^(group|private):\d+$/.test(key)) throw new Error('会话格式无效，请重新选择群或私聊');
+  const role = input?.role === null ? null : (typeof input?.role === 'string' ? input.role : '');
+  if (role !== null) {
+    if (!/^[\w\u4e00-\u9fff-]+$/.test(role)) throw new Error('角色名格式无效');
+    const { roles } = await bridgeApiRequest('/api/roles');
+    if (!roles.includes(role)) throw new Error('该角色卡已不存在，请刷新列表');
+  }
+  return bridgeApiRequest('/api/role', 'POST', { key, role });
+}
+
 async function selectSnowLumaDirectory() {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: '选择 SnowLuma 安装文件夹',
@@ -981,6 +1251,12 @@ function registerIpc() {
     return { ok: true, message: '已打开机器人参数' };
   });
 
+  ipcMain.handle('dsbot-control:open-roles', (event) => {
+    if (!canAccessSnowLuma(event)) throw new Error('未授权的 SnowLuma 控制面板');
+    createRoleWindow();
+    return { ok: true, message: '已打开角色卡页面' };
+  });
+
   ipcMain.handle('dsbot-control:reload-snowluma', async (event) => {
     if (!canAccessSnowLuma(event)) throw new Error('未授权的 SnowLuma 控制面板');
     await mainWindow.loadURL(SNOWLUMA_URL);
@@ -1019,6 +1295,21 @@ function registerIpc() {
     if (!canAccessSnowLuma(event)) throw new Error('未授权的 SnowLuma 控制面板');
     app.quit();
     return { ok: true };
+  });
+
+  ipcMain.handle('role-cards:load', (event) => {
+    if (!canAccessRoleUi(event)) throw new Error('未授权的角色卡页面');
+    return loadRoleManagerData();
+  });
+
+  ipcMain.handle('role-cards:save', (event, input) => {
+    if (!canAccessRoleUi(event)) throw new Error('未授权的角色卡页面');
+    return saveRoleCard(input);
+  });
+
+  ipcMain.handle('role-cards:switch', (event, input) => {
+    if (!canAccessRoleUi(event)) throw new Error('未授权的角色卡页面');
+    return switchSessionRole(input);
   });
 }
 

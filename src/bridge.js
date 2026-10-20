@@ -1341,6 +1341,8 @@ async function main() {
   // DSH 侧
   const api = new NodeApiClient(cfg.dsh.baseUrl);
   const collectors = new Map(); // sessionId -> turn collector
+  const agentErrorNoticeAt = new Map(); // key -> 上次发送错误提示的时间，避免同一故障刷屏
+  const AGENT_ERROR_NOTICE_COOLDOWN_MS = 5 * 60 * 1000;
   const sendToolSucceededSessions = new Set(); // sessionId：当前 turn 内 MCP 发送类工具至少成功一次
   const v2TurnStartAt = new Map(); // sessionId -> timestamp：reserved2 turn 开始时间，用于判断是否“无行动”
   const toolCallNames = new Map(); // sessionId -> Map<callId, toolName>：用于结果日志关联工具名
@@ -8145,6 +8147,7 @@ async function main() {
                 }
               }
               if (ended.reason.kind === 'completed' && ended.text.trim()) {
+                agentErrorNoticeAt.delete(key);
                 const plain = mdToPlain(ended.text);
                 // 纯 Markdown/空白输出按“无文本”处理，避免后续 planSocialTimeline 拿空串崩溃。
                 if (!plain.trim()) {
@@ -8262,9 +8265,25 @@ async function main() {
                   await sendToQQ(key, plain);
                 }
               } else if (ended.reason.kind === 'error') {
-                const msg = ended.reason.error?.message ?? '未知错误';
+                const agentError = ended.reason.error;
+                const msg = agentError?.message ?? '未知错误';
+                const diagnostic = redactSensitiveText(`${agentError?.name ?? 'Error'}: ${msg}`)
+                  .replace(/[\r\n]+/g, ' ')
+                  .slice(0, 500);
+                log(`agent 处理出错 (${key})：${diagnostic}`);
                 const safeMsg = shouldAuditKey(key) && SENSITIVE_RE.test(msg) ? '（含敏感信息，已隐藏）' : msg.slice(0, 500);
-                await sendToQQ(key, `⚠️ agent 处理出错：${safeMsg}`);
+                const now = Date.now();
+                const lastNoticeAt = agentErrorNoticeAt.get(key) ?? 0;
+                if (now - lastNoticeAt >= AGENT_ERROR_NOTICE_COOLDOWN_MS) {
+                  agentErrorNoticeAt.set(key, now);
+                  try {
+                    await sendToQQ(key, `⚠️ agent 处理出错：${safeMsg}`);
+                  } catch (sendError) {
+                    log(`agent 错误提醒发送失败 (${key})：${sendError?.message ?? '未知错误'}`);
+                  }
+                } else {
+                  log(`agent 错误提醒限频 (${key})`);
+                }
                 if (isFarewell) {
                   const st = socialState(key);
                   if (st.phase === 'exiting') {

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none';">
+  <title>角色卡切换 · DSBot</title>
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; color: #17333d; background: #f4f8fa; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 760px; min-height: 100vh; padding: 30px; }
+    main { width: min(1060px, 100%); margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 23px; }
+    .eyebrow { margin: 0 0 7px; color: #078bad; font-size: 12px; font-weight: 700; letter-spacing: .11em; }
+    h1 { margin: 0; font-size: 28px; letter-spacing: -.025em; }
+    .intro { margin: 8px 0 0; color: #647b85; font-size: 14px; }
+    button, select { font: inherit; }
+    .refresh { min-height: 40px; padding: 0 15px; border: 1px solid #d7e5ea; border-radius: 10px; color: #17637b; background: white; cursor: pointer; }
+    .session-box, .preview-box { padding: 17px 19px; border: 1px solid #dce8ec; border-radius: 15px; background: white; }
+    .session-box { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 18px; margin-bottom: 22px; }
+    label { display: block; margin-bottom: 8px; color: #607782; font-size: 12px; font-weight: 700; }
+    select { width: min(600px, 100%); min-height: 42px; padding: 0 12px; border: 1px solid #d4e3e8; border-radius: 10px; color: #17333d; background: #fbfdfe; }
+    .session-meta { padding-bottom: 10px; color: #71858d; font-size: 12px; text-align: right; }
+    .section-title { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin: 0 1px 11px; }
+    h2 { margin: 0; font-size: 17px; }
+    .section-hint { color: #71858d; font-size: 12px; }
+    #cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .role-card { min-height: 154px; display: flex; flex-direction: column; border: 1px solid #dce8ec; border-radius: 14px; background: #fff; color: inherit; transition: border-color .15s, box-shadow .15s, transform .15s; }
+    .role-card:hover { border-color: #70c4d9; transform: translateY(-1px); }
+    .role-card[data-selected="true"] { border-color: #079cc4; box-shadow: 0 0 0 2px #d8f2f8; background: #f6fcfd; }
+    .role-card-select { flex: 1; width: 100%; padding: 15px 16px 8px; border: 0; border-radius: inherit; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+    .card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .role-name { font-size: 15px; font-weight: 700; }
+    .badge { padding: 3px 7px; border-radius: 99px; color: #078bad; background: #e9f8fb; font-size: 10px; white-space: nowrap; }
+    .role-desc { display: -webkit-box; overflow: hidden; margin: 0; color: #657b84; font-size: 12px; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+    .role-card-actions { display: flex; justify-content: flex-end; padding: 0 12px 12px; }
+    .role-edit, .editor-secondary { min-height: 32px; padding: 0 10px; border: 1px solid #d7e5ea; border-radius: 8px; color: #17637b; background: #fff; cursor: pointer; }
+    .role-edit:hover, .editor-secondary:hover { border-color: #70c4d9; background: #f5fbfd; }
+    .preview-box { margin-top: 17px; }
+    .preview-box h2 { margin-bottom: 9px; }
+    #preview { max-height: 130px; overflow: auto; margin: 0; color: #657b84; font: 12px/1.65 "Segoe UI", "Microsoft YaHei UI", sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+    footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 17px; }
+    #notice { min-height: 20px; color: #637a84; font-size: 12px; }
+    .apply { min-width: 132px; min-height: 42px; padding: 0 18px; border: 0; border-radius: 10px; color: white; background: #079cc4; font-weight: 700; cursor: pointer; }
+    .apply:hover { background: #0788ad; }
+    button:disabled, select:disabled { opacity: .55; cursor: not-allowed; }
+    .empty { grid-column: 1 / -1; padding: 28px; border: 1px dashed #cfdee3; border-radius: 14px; color: #71858d; background: #fbfdfe; text-align: center; }
+    #role-editor { width: min(860px, calc(100vw - 40px)); max-width: none; max-height: calc(100vh - 40px); padding: 24px; border: 1px solid #d5e4e9; border-radius: 18px; color: #17333d; background: #fff; box-shadow: 0 24px 70px #17364b33; }
+    #role-editor::backdrop { background: #17313d73; backdrop-filter: blur(3px); }
+    .editor-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+    .editor-head h2 { font-size: 21px; }
+    .editor-hint { margin: 8px 0 18px; color: #647b85; font-size: 13px; line-height: 1.6; }
+    #role-content { display: block; width: 100%; min-height: min(58vh, 560px); margin-top: 8px; padding: 14px 16px; resize: vertical; border: 1px solid #cadde4; border-radius: 11px; outline: none; color: #17333d; background: #fbfdfe; font: 14px/1.7 Consolas, "Microsoft YaHei UI", monospace; tab-size: 2; }
+    #role-content:focus { border-color: #079cc4; box-shadow: 0 0 0 3px #d8f2f8; }
+    .editor-meta, .editor-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
+    .editor-meta { color: #71858d; font-size: 12px; }
+    .editor-actions { justify-content: flex-end; margin-top: 18px; }
+    .editor-primary { min-height: 40px; padding: 0 16px; border: 0; border-radius: 9px; color: #fff; background: #079cc4; font-weight: 700; cursor: pointer; }
+    .editor-primary:hover { background: #0788ad; }
+    .editor-close { width: 34px; height: 34px; border: 0; border-radius: 9px; color: #536b77; background: #f2f7f9; font-size: 19px; cursor: pointer; }
+    @media (max-width: 850px) { body { padding: 22px; } #cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 620px) { body { min-width: 0; padding: 16px; } #cards { grid-template-columns: 1fr; } .session-box { grid-template-columns: 1fr; } .session-meta { padding: 0; text-align: left; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">DSBOT · PERSONA</p>
+        <h1>角色卡切换</h1>
+        <p class="intro">选择一个 QQ 会话，再为它设置专属角色卡。</p>
+      </div>
+      <button id="refresh" class="refresh" type="button">刷新列表</button>
+    </header>
+    <section class="session-box" aria-label="选择会话">
+      <div>
+        <label for="session">当前会话</label>
+        <select id="session" disabled><option>正在读取会话…</option></select>
+      </div>
+      <div id="session-meta" class="session-meta"></div>
+    </section>
+    <section aria-labelledby="roles-heading">
+      <div class="section-title">
+        <h2 id="roles-heading">可用角色</h2>
+        <span class="section-hint">切换后会归档旧 DSH 会话，并为此会话开启新的 DSH 会话</span>
+      </div>
+      <div id="cards" aria-live="polite"><div class="empty">正在读取角色卡…</div></div>
+    </section>
+    <section class="preview-box" aria-labelledby="preview-heading">
+      <h2 id="preview-heading">角色设定预览</h2>
+      <pre id="preview">选择角色卡后查看设定内容。</pre>
+    </section>
+    <footer>
+      <div id="notice" role="status" aria-live="polite">正在连接 QQ Bridge…</div>
+      <button id="apply" class="apply" type="button" disabled>应用到此会话</button>
+    </footer>
+  </main>
+  <dialog id="role-editor" aria-labelledby="editor-title">
+    <div class="editor-head">
+      <div>
+        <p class="eyebrow">DSBOT · PERSONA EDITOR</p>
+        <h2 id="editor-title">编辑角色卡</h2>
+      </div>
+      <button id="editor-close" class="editor-close" type="button" aria-label="关闭编辑器">×</button>
+    </div>
+    <p class="editor-hint">修改角色卡正文（Markdown）。保存后，新收到的消息会读取更新内容；已有会话记录会保留。</p>
+    <label for="role-content">角色设定正文</label>
+    <textarea id="role-content" maxlength="200000" spellcheck="false"></textarea>
+    <div class="editor-meta">
+      <span id="char-count">0 / 200,000</span>
+      <span>卡片名称由文件名决定，此处仅编辑设定内容。</span>
+    </div>
+    <div class="editor-actions">
+      <button id="cancel-edit" class="editor-secondary" type="button">取消</button>
+      <button id="save-edit" class="editor-primary" type="button">保存修改</button>
+    </div>
+  </dialog>
+  <script src="roles.js"></script>
+</body>
+</html>

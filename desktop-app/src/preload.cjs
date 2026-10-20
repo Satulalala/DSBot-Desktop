@@ -20,6 +20,12 @@ if (currentUrl.startsWith('file:') && currentUrl.endsWith('/splash.html')) {
     saveAndApply: (settings) => ipcRenderer.invoke('settings:save-and-apply', settings),
     restartBridge: () => ipcRenderer.invoke('settings:restart-bridge')
   }));
+} else if (currentUrl.startsWith('file:') && currentUrl.endsWith('/roles.html')) {
+  contextBridge.exposeInMainWorld('dsbotRoles', Object.freeze({
+    load: () => ipcRenderer.invoke('role-cards:load'),
+    saveRole: (input) => ipcRenderer.invoke('role-cards:save', input),
+    switchRole: (input) => ipcRenderer.invoke('role-cards:switch', input)
+  }));
 } else if (window.location.origin === 'http://127.0.0.1:5099') {
   let savedPassword = '';
   let remembered = false;
@@ -36,6 +42,7 @@ if (currentUrl.startsWith('file:') && currentUrl.endsWith('/splash.html')) {
     startService: (name) => ipcRenderer.invoke('dsbot-control:start-service', name),
     startAll: () => ipcRenderer.invoke('dsbot-control:start-all'),
     openSettings: () => ipcRenderer.invoke('dsbot-control:open-settings'),
+    openRoles: () => ipcRenderer.invoke('dsbot-control:open-roles'),
     reloadSnowLuma: () => ipcRenderer.invoke('dsbot-control:reload-snowluma'),
     restartBridge: () => ipcRenderer.invoke('dsbot-control:restart-bridge'),
     openLogs: () => ipcRenderer.invoke('dsbot-control:open-logs'),
@@ -134,6 +141,7 @@ if (currentUrl.startsWith('file:') && currentUrl.endsWith('/splash.html')) {
         <div id="services"></div>
         <p id="notice" role="status" aria-live="polite">正在读取服务状态…</p>
         <details><summary>其他桌面功能</summary><div class="actions">
+          <button type="button" data-action="roles">角色卡切换…</button>
           <button type="button" data-action="settings">机器人参数…</button>
           <button type="button" data-action="restart-bridge">重启 QQ Bridge</button>
           <button type="button" data-action="reload">重新加载 SnowLuma</button>
@@ -224,6 +232,7 @@ if (currentUrl.startsWith('file:') && currentUrl.endsWith('/splash.html')) {
     root.getElementById('close').addEventListener('click', () => setOpen(false));
     root.getElementById('refresh').addEventListener('click', (event) => run(event.currentTarget, () => controlApi.refreshServices(), '正在检查服务…'));
     root.getElementById('start-all').addEventListener('click', (event) => run(event.currentTarget, () => controlApi.startAll(), '正在启动缺失服务…'));
+    root.querySelector('[data-action="roles"]').addEventListener('click', (event) => run(event.currentTarget, () => controlApi.openRoles(), '正在打开角色卡…'));
     root.querySelector('[data-action="settings"]').addEventListener('click', (event) => run(event.currentTarget, () => controlApi.openSettings(), '正在打开机器人参数…'));
     root.querySelector('[data-action="restart-bridge"]').addEventListener('click', (event) => run(event.currentTarget, () => controlApi.restartBridge(), '正在重启 QQ Bridge…'));
     root.querySelector('[data-action="reload"]').addEventListener('click', (event) => run(event.currentTarget, () => controlApi.reloadSnowLuma(), '正在重新加载 SnowLuma…'));

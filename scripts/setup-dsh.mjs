@@ -35,6 +35,28 @@ function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
 
+function copyTree(source, destination) {
+  const stat = fs.lstatSync(source);
+  if (stat.isSymbolicLink()) {
+    const target = fs.readlinkSync(source);
+    const targetIsDirectory = fs.statSync(source).isDirectory();
+    const type = process.platform === 'win32'
+      ? (targetIsDirectory ? 'junction' : 'file')
+      : (targetIsDirectory ? 'dir' : 'file');
+    fs.symlinkSync(target, destination, type);
+    return;
+  }
+  if (!stat.isDirectory()) {
+    ensureDir(path.dirname(destination));
+    fs.copyFileSync(source, destination);
+    return;
+  }
+  ensureDir(destination);
+  for (const name of fs.readdirSync(source)) {
+    copyTree(path.join(source, name), path.join(destination, name));
+  }
+}
+
 function copyPreset(name) {
   const src = path.join(REPO_ROOT, 'dsh', 'agent-presets', name);
   const dest = path.join(DSH_HOME, '.agent-presets', name);
@@ -44,7 +66,7 @@ function copyPreset(name) {
     return;
   }
   ensureDir(path.dirname(dest));
-  fs.cpSync(src, dest, { recursive: true, force: true });
+  copyTree(src, dest);
   log(`preset installed: ${name}`);
 }
 
@@ -113,82 +135,18 @@ function patchCordis() {
   fs.writeFileSync(patchFile, text, 'utf8');
 }
 
-function ensurePluginLink() {
-  const repoPlugin = path.join(REPO_ROOT, 'plugins', 'qq-mode-console');
-  const pluginLink = path.join(DSH_HOME, 'plugins', 'qq-mode-console');
-  if (!fs.existsSync(repoPlugin)) fatal(`plugin not found: ${repoPlugin}`);
-  ensureDir(path.dirname(pluginLink));
-
-  let existing = null;
-  try {
-    existing = fs.lstatSync(pluginLink);
-  } catch (error) {
-    if (error?.code !== 'ENOENT') fatal(`failed to inspect plugin link: ${error?.message ?? error}`);
+function ensureProfileBundleCopy(pluginSource) {
+  const moduleRoot = path.join(DSH_HOME, 'node_modules');
+  const bundleDir = path.join(moduleRoot, 'qq-mode-console');
+  if (!fs.existsSync(pluginSource)) fatal(`plugin not found: ${pluginSource}`);
+  ensureDir(bundleDir);
+  for (const name of fs.readdirSync(pluginSource)) {
+    copyTree(path.join(pluginSource, name), path.join(bundleDir, name));
   }
-
-  if (existing) {
-    if (!existing.isSymbolicLink()) {
-      fatal(`plugin path already exists and is not a symlink/junction: ${pluginLink}. Please remove it manually or move it out of the way, then rerun.`);
-    }
-    // 符号链接/junction 存在时，校验是否指向当前仓库；指向旧路径/失效时自动重建。
-    let sameTarget = false;
-    try {
-      const target = fs.realpathSync(pluginLink);
-      const expected = fs.realpathSync(repoPlugin);
-      sameTarget = process.platform === 'win32'
-        ? String(target).toLowerCase() === String(expected).toLowerCase()
-        : String(target) === String(expected);
-    } catch {}
-    if (sameTarget) {
-      log(`plugin link already exists and points to this repo: ${pluginLink}`);
-      return pluginLink;
-    }
-    log(`plugin link exists but points elsewhere/broken, recreating: ${pluginLink}`);
-    fs.rmSync(pluginLink, { recursive: true, force: true });
-  }
-
-  try {
-    if (process.platform === 'win32') {
-      fs.symlinkSync(repoPlugin, pluginLink, 'junction');
-    } else {
-      fs.symlinkSync(repoPlugin, pluginLink, 'dir');
-    }
-    log(`plugin link created: ${pluginLink}`);
-  } catch (e) {
-    fatal(`failed to create plugin link: ${e.message}`);
-  }
-  return pluginLink;
+  log(`profile bundle copied: ${bundleDir}`);
 }
 
-function ensureProfileBundleLink(pluginLink) {
-  const profileDir = path.join(DSH_HOME, 'profiles', PROFILE);
-  const bundleLink = path.join(profileDir, 'node_modules', 'qq-mode-console');
-  ensureDir(path.dirname(bundleLink));
-  let sameTarget = false;
-  try {
-    const target = fs.realpathSync(bundleLink);
-    const expected = fs.realpathSync(pluginLink);
-    sameTarget = process.platform === 'win32'
-      ? String(target).toLowerCase() === String(expected).toLowerCase()
-      : String(target) === String(expected);
-  } catch {}
-  if (sameTarget) return;
-  try {
-    const existing = fs.lstatSync(bundleLink);
-    if (!existing.isSymbolicLink()) fatal(`profile bundle path exists and is not a symlink: ${bundleLink}`);
-    fs.rmSync(bundleLink, { recursive: true, force: true });
-  } catch (error) {
-    if (error?.code !== 'ENOENT') fatal(`failed to inspect profile bundle link: ${error?.message ?? error}`);
-  }
-  try {
-    fs.symlinkSync(pluginLink, bundleLink, process.platform === 'win32' ? 'junction' : 'dir');
-    log(`profile bundle link created: ${bundleLink}`);
-  } catch (error) {
-    fatal(`failed to create profile bundle link: ${error.message}`);
-  }
-}
-
-function patchProfilePackage(pluginLink) {
+function patchProfilePackage(pluginSource) {
   const profileDir = path.join(DSH_HOME, 'profiles', PROFILE);
   const pkgFile = path.join(profileDir, 'package.json');
   ensureDir(profileDir);
@@ -206,7 +164,15 @@ function patchProfilePackage(pluginLink) {
   pkg.dsh = pkg.dsh || {};
   pkg.dsh.profile = pkg.dsh.profile || {};
   if (!Array.isArray(pkg.dsh.profile.bundles)) pkg.dsh.profile.bundles = [];
-  const linkVal = `link:${pluginLink.replace(/\\/g, '/')}`;
+  const defaultBundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'];
+  for (const [index, bundle] of defaultBundles.entries()) {
+    const existingIndex = pkg.dsh.profile.bundles.indexOf(bundle);
+    if (existingIndex === index) continue;
+    if (existingIndex >= 0) pkg.dsh.profile.bundles.splice(existingIndex, 1);
+    pkg.dsh.profile.bundles.splice(index, 0, bundle);
+    log(`package.json default bundle ensured: ${bundle}`);
+  }
+  const linkVal = `link:${pluginSource.replace(/\\/g, '/')}`;
   if (pkg.dependencies['qq-mode-console'] !== linkVal) {
     pkg.dependencies['qq-mode-console'] = linkVal;
     log(`package.json dependency qq-mode-console -> ${linkVal}`);
@@ -234,8 +200,8 @@ function ensureLocalModeFile() {
 copyPreset('qq-chat');
 copyPreset('qq-chat-v2');
 patchCordis();
-const pluginLink = ensurePluginLink();
-patchProfilePackage(pluginLink);
-ensureProfileBundleLink(pluginLink);
+const pluginSource = path.join(REPO_ROOT, 'plugins', 'qq-mode-console');
+patchProfilePackage(pluginSource);
+ensureProfileBundleCopy(pluginSource);
 ensureLocalModeFile();
 log('Done. DSH runtime is configured without a network package-install step.');

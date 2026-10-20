@@ -1,7 +1,7 @@
 {
   "name": "dsbot-desktop",
   "productName": "DSBot 桌面端",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "private": true,
   "description": "DSBot Electron desktop launcher and SnowLuma workspace",
   "main": "src/main.cjs",

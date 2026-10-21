@@ -77,7 +77,6 @@ qq-bridge/
 │   └── qq-mode-console/        # DSH 设置页 qq-mode 卡片插件
 ├── assets/
 │   ├── deepseek娘.png          # AI 自我形象图（qq_get_self_image）
-│   └── project-intro.mp4       # 项目介绍视频（README 可查看）
 ├── scripts/                    # 通用测试/辅助脚本（含 setup-dsh.mjs）
 ├── config.example.json         # 配置模板（占位符，不含真实凭据）
 ├── package.json

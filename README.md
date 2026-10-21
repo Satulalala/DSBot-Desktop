@@ -21,10 +21,6 @@ DSBot 桌面端为 Windows 上的 QQ AI 群聊机器人提供本地控制台。�
   </tr>
 </table>
 
-![QQ 群聊互动演示](assets/screenshots/group-interaction-demo.png)
-
-*群聊交互演示画面，截取自项目介绍视频，示例对话为演示内容。 [观看完整视频](assets/project-intro.mp4)*
-
 ## 项目组成
 
 ~~~text

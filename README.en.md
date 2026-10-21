@@ -21,10 +21,6 @@ DSBot Desktop is a local Windows control panel for a QQ AI chat stack. It brings
   </tr>
 </table>
 
-![QQ group interaction demo](assets/screenshots/group-interaction-demo.png)
-
-*Illustrative group interaction from the project introduction video; the conversation is demo content. [Watch the full video](assets/project-intro.mp4).*
-
 ## How It Works
 
 ~~~text

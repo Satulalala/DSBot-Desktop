@@ -12,12 +12,6 @@ QQ 消息 ──► SnowLuma（OneBot v11 WS）──► 本桥接进程 ──�
                                                 └── agent 回复/提问/审批 ┘
 ```
 
-## 项目展示
-
-📽️ [AI 仿真群友 - 项目介绍视频](assets/project-intro.mp4)
-
-> 视频文件位于 `assets/project-intro.mp4`，可直接下载观看。
-
 ## 架构
 
 - **QQ 侧**：`@snowluma/sdk` 的 `SnowLumaWebSocketClient`（OneBot v11 WebSocket 客户端，自动重连）

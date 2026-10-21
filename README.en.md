@@ -1,127 +1,115 @@
-# QQ ↔ DeepSeek Harness Bridge (qq-bridge)
+# DSBot Desktop
 
-> Connect QQ messages to DeepSeek Harness (DSH) agents: QQ friends/groups become DSH conversations, and agent replies (including questions and tool approvals) are sent back to QQ.
+[简体中文](README.md) · English · [Download v1.0.6](https://github.com/Satulalala/DSBot-Desktop/releases/tag/v1.0.6)
 
-For the detailed Chinese guide, see **[docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)**.
+DSBot Desktop is a local Windows control panel for a QQ AI chat stack. It brings DeepSeek Harness (DSH), SnowLuma (the OneBot v11 QQ gateway), and QQ Bridge service controls, status, bot settings, logs, and persona cards into one desktop app.
 
-## Architecture
+## Screenshots
 
-```
-QQ messages ──► SnowLuma (OneBot v11 WS) ──► qq-bridge ──► DSH Web API (127.0.0.1:3080/api)
-                                                    ▲                      │
-                                                    └── agent replies / questions / approvals ┘
-```
+![DSBot local service status page](assets/screenshots/service-status.png)
 
-- **QQ side**: `@snowluma/sdk` provides the OneBot v11 WebSocket client.
-- **DSH side**: reuses `@deepseek-ai/dsh-host-apiproxy` and implements the Node transport layer.
-- **Agent tools**: safe MCP servers expose a restricted QQ toolset (`qq_status`, `qq_list_groups`, `qq_get_group_history`, `qq_send_group_message`, `qq_reply`, etc.).
-- **Console**: a local web console at `http://127.0.0.1:3100` for mode switching, role management, whitelist/admin settings, slang management, memory, stickers and more.
+*Service states and ports shown here are demo data and do not represent live services.*
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/role-cards.png" alt="Persona cards assigned per QQ conversation" width="100%"></td>
+    <td width="50%"><img src="assets/screenshots/role-editor.png" alt="Markdown persona editor" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">Choose a persona for a conversation. Switching archives its previous DSH session and opens a new one.</td>
+    <td align="center">Edit persona instructions as Markdown.</td>
+  </tr>
+</table>
+
+![QQ group interaction demo](assets/screenshots/group-interaction-demo.png)
+
+*Illustrative group interaction from the project introduction video; the conversation is demo content. [Watch the full video](assets/project-intro.mp4).*
+
+## How It Works
+
+~~~text
+QQ group / private chat ⇄ SnowLuma ⇄ QQ Bridge ⇄ DeepSeek Harness agent
+                                      ⇅
+                                restricted MCP tools
+
+DSBot Desktop ── manages local service lifecycle, status, settings, logs, and persona cards
+~~~
+
+The desktop app manages local services. QQ Bridge routes QQ messages to their corresponding DSH sessions and returns agent replies or interaction results to QQ. SnowLuma is a separate component that users install and sign in to themselves.
 
 ## Features
 
-- Bridges QQ group/private messages to DSH agent sessions.
-- Social simulation mode ("simulated group friend") with idle/active/probing/exiting states.
-- Space-based message splitting for more natural multi-message replies.
-- Whitelist/blacklist access control, fail-closed by default.
-- Sensitive text audit prevents paths/credentials from being sent to QQ.
-- MCP tools for reading group history/members, sending messages, replying with quotes, and (in `reserved2`) full simulated-group-friend tooling.
-- Slang/network-expression learning with human confirmation.
-- Lightweight memory system for active topics, pending thoughts and member impressions.
-- Sticker library integration with AI-friendly sticker usage.
+### Desktop controls
 
-## Requirements
+- Periodically checks local service port responses for DSH, SnowLuma, and QQ Bridge, with controls to start missing services.
+- Opens SnowLuma, bot settings, and runtime logs from the desktop app.
+- The Windows installer includes Node.js, DSH, QQ Bridge, and their runtime dependencies.
 
-- Node.js >= 22.13
-- Running DeepSeek Harness Web (default `http://127.0.0.1:3080`)
-- Running SnowLuma with OneBot v11 WebSocket and HTTP API enabled
+### QQ sessions and persona cards
 
-## Quick Start
+- Group chats and private chats map to separate DSH sessions.
+- Persona choice is saved per QQ conversation. Switching personas archives the previous DSH session and creates a new one for that conversation.
+- View and edit Markdown persona instructions in the desktop role-card page.
+- Supports quoted replies, agent questions, and tool-approval round trips.
 
-```bash
-npm install        # postinstall automatically patches the @snowluma/sdk ESM packaging bug
-```
+### Bridge capabilities
 
-Copy `config.example.json` to `config.json`, then edit:
+- Receives QQ events through OneBot v11 and sends messages to DSH agents.
+- Provides restricted MCP tools for authorized group information and message history, plus configured sending, quoted replies, and interactions.
+- Includes chat and simulated group-friend modes. Proactive speech, waiting, and silent behavior depend on the selected mode and DSH agent instructions.
+- Includes supporting features for group topics, member impressions, slang, and stickers. Exact behavior depends on configuration, dependencies, and runtime mode.
 
-```bash
-cp config.example.json config.json
-```
+## Install and First Run
 
-Key settings:
+1. Download and install the Windows installer from the [v1.0.6 Release](https://github.com/Satulalala/DSBot-Desktop/releases/tag/v1.0.6).
+2. On first launch, select an existing SnowLuma installation directory. The installer does not bundle the SnowLuma service itself.
+3. Sign in to QQ in SnowLuma and configure its OneBot v11 WebSocket and HTTP APIs.
+4. Check service status in DSBot Desktop, then review bot access lists, runtime mode, and DSH model settings.
+5. Open **DSBot → Switch Persona Cards…** to assign or edit a persona for a QQ conversation.
 
-| Field | Description |
-| --- | --- |
-| `dsh.baseUrl` | DSH Web API URL, default `http://127.0.0.1:3080` |
-| `snowluma.wsUrl` | SnowLuma OneBot **WebSocket** URL (e.g. `ws://127.0.0.1:3001`) |
-| `snowluma.accessToken` | OneBot access token, leave empty if not configured |
-| `snowluma.httpUrl` | OneBot **HTTP API** URL (e.g. `http://127.0.0.1:3000`); do not point this at the WebSocket port or you will get HTTP 426 |
-| `ownerQQ` | Administrator QQ (highest privilege) |
-| `allow.private` / `allow.groups` | Whitelist of QQ/group IDs |
-| `consolePort` | Local console port, default `3100` |
+Keep the DSBot Desktop app-data directory for the current Windows user when upgrading. It stores desktop settings, Bridge configuration, session state, and persona cards. SnowLuma manages its own QQ login and runtime data.
 
-Start:
+## Build from Source
 
-```bash
-npm start
-```
+Use Windows x64 and Node.js 22.13 or later. Clone the repository, then build the desktop app:
 
-Or double-click `start.bat` on Windows (guard mode with auto-restart).
+~~~powershell
+git clone https://github.com/Satulalala/DSBot-Desktop.git
+cd DSBot-Desktop
+cd desktop-app
+npm install
+npm run make
+~~~
 
-## DSH Setup on Another Device
+The runtime preparation script downloads and verifies the official Node.js distribution, then packages DSH, QQ Bridge production dependencies, and license files. SnowLuma must still be installed separately.
 
-The bridge and console can run without extra DSH setup, but the two DSH chat presets (`qq-chat` and `qq-chat-v2`) and the MCP servers must be installed into DSH once per machine:
+## Security and Limitations
 
-```bash
-node scripts/setup-dsh.mjs
-```
+- Before connecting a real QQ account, review allow/deny lists, the administrator QQ ID, runtime mode, and agent tool permissions.
+- Configuration, QQ login data, session state, and logs are local data. Do not commit config.json, state, credentials, or runtime logs; the public repository contains example configuration only.
+- The status page uses local port responses as a service check. A responding port does not verify the process version, configuration, or account login state. Check runtime logs when diagnosing an issue.
+- Recognition of image and other attachments depends on OneBot event data, the Bridge processing path, and DSH model capabilities. Some paths pass attachments as placeholder text.
+- SnowLuma itself and third-party dependencies retain their own licenses. Relevant license and dependency notices are included with the installer.
 
-This installs:
+## Documentation
 
-- `~/.dsh/.agent-presets/qq-chat` and `~/.dsh/.agent-presets/qq-chat-v2`
-- MCP entries in `~/.dsh/profiles/web/cordis.patch.yml`
-- `qq-mode-console` in the profile `package.json`
-- Default DSH mode set to `reserved2` (second-generation simulation), with a local `state/mode.json` fallback
-
-Then restart DSH. See [docs/DSH_SETUP.md](docs/DSH_SETUP.md) for details.
-
-## Security Notes
-
-- `config.json` and `state/` are **never committed**; the repository only ships `config.example.json`.
-- MCP send tools enforce whitelist checks and reject CQ-code injection.
-- Local paths, credentials, tokens and other sensitive patterns are filtered by the audit layer.
-- Process control for SnowLuma (`start_snowluma` / `stop_snowluma`) is disabled by default and only allowed in `closed-agent` mode when explicitly enabled.
-- The console uses a generated token when none is configured.
+- [Bridge architecture, runtime modes, and configuration](docs/QQ-BRIDGE.md)
+- [Project technical guide and data flow](docs/PROJECT_GUIDE.md)
+- [DSH setup guide](docs/DSH_SETUP.md)
+- [Desktop user guide](desktop-app/README.md)
 
 ## Repository Layout
 
-```
-qq-bridge/
-  config.example.json   # sanitized config template (real config.json is not in repo)
-  docs/
-    PROJECT_GUIDE.md    # detailed Chinese guide
-  dsh/agent-presets/    # qq-chat / qq-chat-v2 DSH agent preset templates
-  plugins/qq-mode-console  # DSH settings qq-mode card plugin
-  src/                  # bridge core and MCP servers
-  public/
-    console.html        # local web console
-  roles/                # persona cards
-  assets/               # images and project intro video
-  scripts/              # tests and helper scripts
-  state/                # runtime data (not in repo)
-```
+~~~text
+desktop-app/       Electron app, persona pages, and runtime packaging
+src/               QQ Bridge, DSH client, safe MCP tools, and message handling
+dsh/               DSH agent presets
+roles/             Markdown persona cards
+docs/              Architecture, configuration, and operations guides
+assets/            Project video and screenshots
+config.example.json Example config; never commit real configuration
+~~~
 
-## Testing
+## License and Disclaimer
 
-```bash
-npm run self-test       # DSH-side link test, no QQ/SnowLuma required
-npm run test-md
-npm run test-wait
-npm run test-vision
-npm run test-forward
-npm run test-slang
-npm run test-stickers
-```
-
-## Compliance
-
-SnowLuma is an independent third-party project and is not affiliated with Tencent/QQ. This project is for learning and technical research only; please follow the relevant terms and the QQ User Agreement.
+The Bridge code is covered by the MIT License in the repository root. See component directories for desktop and third-party runtime notices. DSBot is not affiliated with SnowLuma, Tencent/QQ, or DeepSeek. Follow QQ platform rules and all applicable component licenses.

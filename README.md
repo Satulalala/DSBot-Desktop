@@ -102,7 +102,7 @@ src/               QQ Bridge、DSH 客户端、安全 MCP 与消息处理
 dsh/               DSH Agent preset
 roles/             角色卡 Markdown 文件
 docs/              架构、配置和运维文档
-assets/            项目演示视频与截图
+assets/            项目截图
 config.example.json 示例配置；真实配置不应提交
 ~~~
 

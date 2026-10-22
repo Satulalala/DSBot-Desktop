@@ -102,7 +102,7 @@ src/               QQ Bridge, DSH client, safe MCP tools, and message handling
 dsh/               DSH agent presets
 roles/             Markdown persona cards
 docs/              Architecture, configuration, and operations guides
-assets/            Project video and screenshots
+assets/            Project screenshots
 config.example.json Example config; never commit real configuration
 ~~~
 

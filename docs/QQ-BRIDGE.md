@@ -1,6 +1,6 @@
 # QQ ↔ DeepSeek Harness 桥接
 
-**English**: [README.en.md](README.en.md) | **中文**: [README.md](README.md)
+**English**: [README.md#english](../README.md#english) | **中文**: [README.md](../README.md#chinese)
 
 > 📘 详细内外核说明书见 **[docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)**（架构、数据流、配置全解、调试与改进指南）。
 

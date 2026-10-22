@@ -80,8 +80,7 @@ qq-bridge/
 ├── scripts/                    # 通用测试/辅助脚本（含 setup-dsh.mjs）
 ├── config.example.json         # 配置模板（占位符，不含真实凭据）
 ├── package.json
-├── README.md
-└── README.en.md
+└── README.md                 # 中文与英文项目说明
 ```
 
 > `config.json`、`state/`、`node_modules/`、本地开发/计划/调研文档以及一次性本地脚本均不在公开仓库中。
